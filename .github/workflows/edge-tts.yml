@@ -1,0 +1,49 @@
+name: LeCodeIA — génération vocale gratuite
+
+on:
+  schedule:
+    # Toutes les 10 minutes, décalé après le début de l'heure pour limiter les retards.
+    - cron: '7,17,27,37,47,57 * * * *'
+  workflow_dispatch:
+    inputs:
+      enqueue_existing_articles:
+        description: 'Première exécution : mettre tous les articles déjà publiés en file'
+        required: false
+        type: boolean
+        default: false
+      retry_failed_articles:
+        description: 'Relancer aussi les articles dont la synthèse a échoué (facultatif)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lecodeia-edge-tts-worker
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Récupérer uniquement le code du worker
+        uses: actions/checkout@v6
+      - name: Installer Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Installer Edge TTS
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Générer les parties en attente
+        env:
+          LECODEIA_AUDIO_API_URL: ${{ secrets.LECODEIA_AUDIO_API_URL }}
+          LECODEIA_AUDIO_TOKEN: ${{ secrets.LECODEIA_AUDIO_TOKEN }}
+          LECODEIA_AUDIO_VOICE: fr-FR-VivienneMultilingualNeural
+          LECODEIA_AUDIO_RATE: -5%
+          LECODEIA_AUDIO_MAX_PARTS: '8'
+          ENQUEUE_EXISTING_ARTICLES: ${{ github.event_name == 'workflow_dispatch' && inputs.enqueue_existing_articles || false }}
+          RETRY_FAILED_ARTICLES: ${{ github.event_name == 'workflow_dispatch' && inputs.retry_failed_articles || false }}
+        run: python worker.py
